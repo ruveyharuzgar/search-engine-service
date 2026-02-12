@@ -29,3 +29,9 @@
 # OS
 .DS_Store
 Thumbs.db
+
+# Load Test Results
+load-test-results/
+results.json
+summary_*.md
+load-test

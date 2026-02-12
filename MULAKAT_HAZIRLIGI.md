@@ -496,7 +496,558 @@ foreach ($users as $user) {
 
 ---
 
-## 💡 4. GÜÇLÜ YANLARINIZ
+## ⚡ 4. YÜK TESTİ (LOAD TESTING)
+
+### A) Yük Testi Stratejisi
+
+**Senaryo: API'den büyük data geliyor (örn: 100,000+ içerik)**
+
+#### 1. Test Araçları
+
+**A) PHP (Symfony Command) - Projeye Entegre ⭐ ÖNERİLEN**
+```bash
+# Basit test (1000 request, 10 concurrent)
+docker-compose exec php php bin/console app:load-test
+
+# Özel parametrelerle
+docker-compose exec php php bin/console app:load-test -r 5000 -c 50
+
+# Stress test (kademeli yük artışı)
+docker-compose exec php php bin/console app:load-test --scenario=stress
+
+# Spike test (ani yük artışı)
+docker-compose exec php php bin/console app:load-test --scenario=spike
+
+# Sonuçları kaydet
+docker-compose exec php php bin/console app:load-test -o results.json
+
+# Avantajları:
+# ✅ Projeye entegre (aynı codebase)
+# ✅ Symfony HTTP Client kullanır
+# ✅ Kolay debug ve extend edilebilir
+# ✅ Mülakatta göstermek için ideal
+```
+
+**B) Go - Yüksek Performans**
+```bash
+# Binary oluştur
+go build -o load-test load-test.go
+
+# Çalıştır
+./load-test -requests 10000 -concurrent 200
+
+# Stress test
+./load-test -scenario stress
+
+# Sonuçları kaydet
+./load-test -output results.json
+
+# Avantajları:
+# ✅ Çok hızlı ve hafif
+# ✅ Gerçek concurrent execution
+# ✅ Düşük memory footprint
+# ✅ Production-grade tool
+```
+
+**C) k6 (Modern, Scriptable)**
+```javascript
+// load-test.js
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+
+export const options = {
+  stages: [
+    { duration: '2m', target: 100 },  // Ramp-up to 100 users
+    { duration: '5m', target: 100 },  // Stay at 100 users
+    { duration: '2m', target: 200 },  // Spike to 200 users
+    { duration: '5m', target: 200 },  // Stay at 200 users
+    { duration: '2m', target: 0 },    // Ramp-down to 0 users
+  ],
+  thresholds: {
+    http_req_duration: ['p(95)<500'],  // 95% of requests < 500ms
+    http_req_failed: ['rate<0.01'],    // Error rate < 1%
+  },
+};
+
+export default function () {
+  const keywords = ['docker', 'php', 'symfony', 'redis', 'mysql'];
+  const types = ['video', 'article'];
+  
+  const keyword = keywords[Math.floor(Math.random() * keywords.length)];
+  const type = types[Math.floor(Math.random() * types.length)];
+  
+  const res = http.get(
+    `http://localhost:8080/api/search?keyword=${keyword}&type=${type}&page=1&perPage=20`
+  );
+  
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+    'response time < 500ms': (r) => r.timings.duration < 500,
+    'has data': (r) => JSON.parse(r.body).data.length > 0,
+  });
+  
+  sleep(1);
+}
+
+// Çalıştırma:
+// k6 run load-test.js
+```
+
+**Locust (Python-based, Distributed)**
+```bash
+# Detaylı dokümantasyon için: LOAD_TESTING.md
+```
+
+**Apache Bench (Basit ve Hızlı)**
+```bash
+# Bash script ile otomatik test suite
+./load-test.sh quick    # Hızlı test
+./load-test.sh full     # Full test suite
+./load-test.sh stress   # Stress test
+./load-test.sh report   # Rapor oluştur
+```
+
+**Hangi Aracı Kullanmalı?**
+
+| Senaryo | Önerilen Araç | Neden? |
+|---------|---------------|--------|
+| **Mülakat Demo** | PHP (Symfony) | Projeye entegre, kolay açıklanır |
+| **Hızlı Test** | Apache Bench | En basit, kurulum gerektirmez |
+| **Production Test** | Go veya k6 | Yüksek performans, güvenilir |
+| **CI/CD Pipeline** | k6 | Scriptable, Grafana entegrasyonu |
+
+#### 2. Büyük Data Senaryosu
+
+**Problem: API'den 100,000 içerik geliyor**
+
+**A) Provider Optimizasyonu**
+```php
+// src/Provider/JsonProvider.php
+
+class JsonProvider implements ProviderInterface
+{
+    private const BATCH_SIZE = 1000;  // Batch processing
+    
+    public function fetchContents(): array
+    {
+        $allContents = [];
+        $page = 1;
+        
+        do {
+            // Pagination ile çek
+            $response = $this->httpClient->request('GET', $this->apiUrl, [
+                'query' => [
+                    'page' => $page,
+                    'per_page' => self::BATCH_SIZE
+                ],
+                'timeout' => 30,  // Timeout artır
+            ]);
+            
+            $data = $response->toArray();
+            $contents = $this->parseContents($data);
+            
+            if (empty($contents)) {
+                break;
+            }
+            
+            $allContents = array_merge($allContents, $contents);
+            $page++;
+            
+            // Memory temizliği
+            gc_collect_cycles();
+            
+        } while (count($contents) === self::BATCH_SIZE);
+        
+        return $allContents;
+    }
+}
+```
+
+**B) Database Bulk Insert**
+```php
+// src/Service/SearchService.php
+
+public function syncContents(): int
+{
+    $contents = $this->providerManager->fetchAllContents();
+    $count = 0;
+    $batchSize = 500;
+    
+    // Batch insert için
+    $this->entityManager->getConnection()->beginTransaction();
+    
+    try {
+        foreach (array_chunk($contents, $batchSize) as $batch) {
+            foreach ($batch as $contentDTO) {
+                $content = $this->createOrUpdateContent($contentDTO);
+                $this->entityManager->persist($content);
+                $count++;
+            }
+            
+            // Her batch'te flush
+            $this->entityManager->flush();
+            $this->entityManager->clear();  // Memory temizle
+            
+            gc_collect_cycles();  // Garbage collection
+        }
+        
+        $this->entityManager->getConnection()->commit();
+        
+    } catch (\Exception $e) {
+        $this->entityManager->getConnection()->rollBack();
+        throw $e;
+    }
+    
+    return $count;
+}
+```
+
+**C) Async Processing (Symfony Messenger)**
+```php
+// src/Message/SyncContentMessage.php
+class SyncContentMessage
+{
+    public function __construct(
+        public readonly string $providerId,
+        public readonly int $page,
+        public readonly int $perPage = 1000
+    ) {}
+}
+
+// src/MessageHandler/SyncContentHandler.php
+#[AsMessageHandler]
+class SyncContentHandler
+{
+    public function __invoke(SyncContentMessage $message): void
+    {
+        // Her page için ayrı job
+        $provider = $this->providerManager->getProvider($message->providerId);
+        $contents = $provider->fetchPage($message->page, $message->perPage);
+        
+        // Batch insert
+        $this->bulkInsert($contents);
+    }
+}
+
+// Controller'dan dispatch
+public function sync(): JsonResponse
+{
+    $totalPages = 100;  // 100,000 / 1,000
+    
+    for ($page = 1; $page <= $totalPages; $page++) {
+        $this->messageBus->dispatch(
+            new SyncContentMessage('json', $page, 1000)
+        );
+    }
+    
+    return $this->json([
+        'success' => true,
+        'message' => 'Sync jobs queued',
+        'jobs' => $totalPages
+    ]);
+}
+```
+
+**D) Memory Optimization**
+```php
+// php.ini ayarları
+memory_limit = 512M           // Artır
+max_execution_time = 300      // 5 dakika
+opcache.memory_consumption = 256
+opcache.max_accelerated_files = 20000
+
+// Generator kullanımı (memory efficient)
+public function fetchContentsGenerator(): \Generator
+{
+    $page = 1;
+    
+    while (true) {
+        $contents = $this->fetchPage($page);
+        
+        if (empty($contents)) {
+            break;
+        }
+        
+        foreach ($contents as $content) {
+            yield $content;  // Tek tek yield et
+        }
+        
+        $page++;
+    }
+}
+
+// Kullanımı
+foreach ($provider->fetchContentsGenerator() as $content) {
+    $this->processContent($content);
+    // Memory'de sadece 1 content var
+}
+```
+
+#### 3. Database Optimizasyonu
+
+**A) Index Stratejisi**
+```sql
+-- Arama için composite index
+CREATE INDEX idx_search ON content(title, tags, type, published_at);
+
+-- Full-text search index
+CREATE FULLTEXT INDEX idx_fulltext ON content(title, description, tags);
+
+-- Covering index (query sadece index'ten çalışır)
+CREATE INDEX idx_covering ON content(type, published_at, score) 
+INCLUDE (id, title, thumbnail_url);
+
+-- Index kullanımını kontrol et
+EXPLAIN SELECT * FROM content 
+WHERE title LIKE '%docker%' 
+AND type = 'video' 
+ORDER BY score DESC 
+LIMIT 20;
+```
+
+**B) Query Optimization**
+```php
+// Kötü: N+1 problem
+foreach ($contents as $content) {
+    $author = $content->getAuthor();  // Her seferinde query
+}
+
+// İyi: Eager loading
+$contents = $this->repository->createQueryBuilder('c')
+    ->leftJoin('c.author', 'a')
+    ->addSelect('a')
+    ->where('c.title LIKE :keyword')
+    ->setParameter('keyword', "%{$keyword}%")
+    ->getQuery()
+    ->getResult();
+
+// Daha iyi: Pagination + Partial objects
+$query = $this->repository->createQueryBuilder('c')
+    ->select('partial c.{id, title, type, score}')  // Sadece gerekli alanlar
+    ->where('c.title LIKE :keyword')
+    ->setParameter('keyword', "%{$keyword}%")
+    ->setMaxResults(20)
+    ->setFirstResult(($page - 1) * 20);
+```
+
+**C) Connection Pooling**
+```yaml
+# config/packages/doctrine.yaml
+doctrine:
+    dbal:
+        connections:
+            default:
+                url: '%env(resolve:DATABASE_URL)%'
+                options:
+                    # Connection pooling
+                    !php/const PDO::ATTR_PERSISTENT: true
+                    # Prepared statement cache
+                    !php/const PDO::ATTR_EMULATE_PREPARES: false
+                    # Buffered queries
+                    !php/const PDO::MYSQL_ATTR_USE_BUFFERED_QUERY: true
+```
+
+#### 4. Cache Strategi (Büyük Data için)
+
+**A) Multi-Level Caching**
+```php
+class CacheManager
+{
+    // L1: APCu (in-memory, per-process)
+    // L2: Redis (distributed)
+    // L3: Database
+    
+    public function get(string $key): mixed
+    {
+        // L1 Cache
+        if (apcu_exists($key)) {
+            return apcu_fetch($key);
+        }
+        
+        // L2 Cache
+        $item = $this->cache->getItem($key);
+        if ($item->isHit()) {
+            $value = $item->get();
+            apcu_store($key, $value, 300);  // L1'e de kaydet
+            return $value;
+        }
+        
+        return null;
+    }
+}
+```
+
+**B) Cache Warming**
+```php
+// src/Command/WarmCacheCommand.php
+#[AsCommand(name: 'app:cache:warm')]
+class WarmCacheCommand extends Command
+{
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        // Popüler aramaları cache'le
+        $popularKeywords = ['docker', 'php', 'symfony', 'redis'];
+        
+        foreach ($popularKeywords as $keyword) {
+            foreach (['video', 'article'] as $type) {
+                $request = new SearchRequestDTO(
+                    keyword: $keyword,
+                    type: $type,
+                    sortBy: 'score',
+                    page: 1,
+                    perPage: 20
+                );
+                
+                $this->searchService->search($request);
+                $output->writeln("Cached: {$keyword} - {$type}");
+            }
+        }
+        
+        return Command::SUCCESS;
+    }
+}
+```
+
+**C) Cache Preloading (Redis)**
+```php
+// Tüm içerikleri Redis'e yükle
+public function preloadCache(): void
+{
+    $contents = $this->repository->findAll();
+    
+    foreach (array_chunk($contents, 1000) as $batch) {
+        $pipeline = $this->redis->pipeline();
+        
+        foreach ($batch as $content) {
+            $key = "content:{$content->getId()}";
+            $pipeline->setex($key, 3600, serialize($content));
+        }
+        
+        $pipeline->execute();
+    }
+}
+```
+
+#### 5. Monitoring ve Metrics
+
+**A) Performance Metrics**
+```php
+// src/EventListener/PerformanceListener.php
+class PerformanceListener
+{
+    public function onKernelRequest(RequestEvent $event): void
+    {
+        $event->getRequest()->attributes->set('start_time', microtime(true));
+    }
+    
+    public function onKernelResponse(ResponseEvent $event): void
+    {
+        $request = $event->getRequest();
+        $startTime = $request->attributes->get('start_time');
+        $duration = microtime(true) - $startTime;
+        
+        // Prometheus metric
+        $this->metrics->histogram('http_request_duration_seconds', $duration, [
+            'method' => $request->getMethod(),
+            'route' => $request->attributes->get('_route'),
+            'status' => $event->getResponse()->getStatusCode(),
+        ]);
+        
+        // Slow query log
+        if ($duration > 1.0) {
+            $this->logger->warning('Slow request detected', [
+                'duration' => $duration,
+                'route' => $request->attributes->get('_route'),
+                'params' => $request->query->all(),
+            ]);
+        }
+    }
+}
+```
+
+**B) Database Query Monitoring**
+```php
+// config/packages/dev/doctrine.yaml
+doctrine:
+    dbal:
+        logging: true
+        profiling: true
+        
+# Symfony Profiler'da query'leri gör
+# http://localhost:8080/_profiler
+```
+
+#### 6. Yük Testi Sonuçları (Örnek)
+
+**Baseline (Optimizasyon Öncesi)**
+```
+Concurrent Users: 100
+Total Requests: 10,000
+Duration: 120 seconds
+
+Results:
+- Requests/sec: 83.33
+- Avg Response Time: 1,200ms
+- 95th Percentile: 2,500ms
+- Error Rate: 2.5%
+- Throughput: 2.1 MB/sec
+```
+
+**After Optimization**
+```
+Concurrent Users: 100
+Total Requests: 10,000
+Duration: 45 seconds
+
+Results:
+- Requests/sec: 222.22 (↑ 166%)
+- Avg Response Time: 450ms (↓ 62%)
+- 95th Percentile: 800ms (↓ 68%)
+- Error Rate: 0.1% (↓ 96%)
+- Throughput: 5.8 MB/sec (↑ 176%)
+
+Optimizations Applied:
+✅ Redis caching (hit rate: 85%)
+✅ Database indexing
+✅ Query optimization
+✅ Connection pooling
+✅ OPcache enabled
+✅ Batch processing
+```
+
+#### 7. Mülakatta Nasıl Anlatırsınız?
+
+**Soru: "Bu servise yük testi yapmak istesen nasıl yaparsın? API'den büyük data geldiğini düşün."**
+
+**Cevap:**
+
+"Yük testini 3 aşamada yapardım:
+
+**1. Test Stratejisi:**
+- k6 veya Locust ile realistic load simulation
+- 100-200 concurrent user, 10-15 dakika
+- Farklı endpoint'leri test (search, sync)
+- Metrics: response time, throughput, error rate
+
+**2. Büyük Data Senaryosu (100K+ içerik):**
+- **Batch Processing**: 1000'lik chunk'larda işle
+- **Async Jobs**: Symfony Messenger ile queue'ya at
+- **Memory Management**: Generator pattern, gc_collect_cycles()
+- **Bulk Insert**: Transaction içinde batch insert
+- **Pagination**: Provider'dan sayfalı çek
+
+**3. Optimizasyon:**
+- **Database**: Index'ler, query optimization, connection pooling
+- **Cache**: Multi-level (APCu + Redis), cache warming
+- **PHP**: OPcache, memory_limit artırma
+- **Monitoring**: Slow query detection, Prometheus metrics
+
+**Sonuç:**
+Response time'ı 1200ms'den 450ms'ye düşürürüm, throughput'u 2.5x artırırım. Cache hit rate %85+ hedeflerim."
+
+---
+
+## 💡 5. GÜÇLÜ YANLARINIZ
 
 ### Teknik Yetkinlikler
 - ✅ Modern PHP (8.4) ve Symfony (7.0)
