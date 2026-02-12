@@ -21,6 +21,12 @@
             <option value="score">⭐ By Score</option>
             <option value="date">📅 By Date</option>
         </select>
+        <select id="perPage" class="select-input">
+            <option value="5">5 per page</option>
+            <option value="10" selected>10 per page</option>
+            <option value="20">20 per page</option>
+            <option value="50">50 per page</option>
+        </select>
         <button onclick="search()" class="btn btn-primary">
             <i class="fas fa-search"></i>
             Search
@@ -44,13 +50,13 @@
 
 <script>
 let currentPage = 1;
-const perPage = 10;
 
 async function search(page = 1) {
     currentPage = page;
     const keyword = document.getElementById('keyword').value;
     const type = document.getElementById('type').value;
     const sortBy = document.getElementById('sortBy').value;
+    const perPage = parseInt(document.getElementById('perPage').value);
 
     const params = new URLSearchParams({
         page: page,
@@ -289,13 +295,17 @@ document.getElementById('keyword').addEventListener('keypress', function(e) {
     }
 });
 
-// Auto-search on type or sort change
+// Auto-search on type, sort, or perPage change
 document.getElementById('type').addEventListener('change', function() {
     search(1);
 });
 
 document.getElementById('sortBy').addEventListener('change', function() {
     search(1);
+});
+
+document.getElementById('perPage').addEventListener('change', function() {
+    search(1); // Reset to page 1 when changing items per page
 });
 
 // Show all contents on page load

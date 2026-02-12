@@ -1174,4 +1174,4 @@ Sorun veya sorularınız için:
 **Versiyon:** 2.0.0  
 **PHP Versiyonu:** 8.4  
 **Symfony Versiyonu:** 7.0  
-**Son Güncelleme:** 2024
+**Son Güncelleme:** 2026
