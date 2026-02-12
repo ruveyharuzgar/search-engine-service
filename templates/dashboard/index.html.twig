@@ -1,0 +1,304 @@
+{% extends 'base.html.twig' %}
+
+{% block body %}
+<div class="search-section">
+    <div class="search-header">
+        <h2>Search Content</h2>
+        <p>Search through videos and articles with our advanced scoring algorithm</p>
+    </div>
+    
+    <div class="search-form">
+        <div class="input-group">
+            <i class="fas fa-search"></i>
+            <input type="text" id="keyword" class="search-input" placeholder="Enter search keyword...">
+        </div>
+        <select id="type" class="select-input">
+            <option value="">All Types</option>
+            <option value="video">📹 Video</option>
+            <option value="article">📄 Article</option>
+        </select>
+        <select id="sortBy" class="select-input">
+            <option value="score">⭐ By Score</option>
+            <option value="date">📅 By Date</option>
+        </select>
+        <button onclick="search()" class="btn btn-primary">
+            <i class="fas fa-search"></i>
+            Search
+        </button>
+        <button onclick="syncData()" class="btn btn-success">
+            <i class="fas fa-sync-alt"></i>
+            Sync Data
+        </button>
+    </div>
+    
+    <div id="activeFilters" class="filter-chips" style="margin-top: 1rem; display: none;"></div>
+</div>
+
+<div id="error" style="display: none;" class="error"></div>
+<div id="success" style="display: none;" class="success-message"></div>
+<div id="loading" style="display: none;" class="loading">
+    <i class="fas fa-spinner"></i>
+    <p style="margin-top: 1rem; font-size: 1.125rem;">Loading results...</p>
+</div>
+<div id="results"></div>
+
+<script>
+let currentPage = 1;
+const perPage = 10;
+
+async function search(page = 1) {
+    currentPage = page;
+    const keyword = document.getElementById('keyword').value;
+    const type = document.getElementById('type').value;
+    const sortBy = document.getElementById('sortBy').value;
+
+    const params = new URLSearchParams({
+        page: page,
+        perPage: perPage,
+        sortBy: sortBy
+    });
+
+    if (keyword) params.set('keyword', keyword);
+    if (type) params.set('type', type);
+
+    showLoading();
+    hideError();
+    hideSuccess();
+    updateActiveFilters(keyword, type, sortBy);
+
+    try {
+        const response = await fetch(`/api/search?${params}`);
+        const data = await response.json();
+
+        if (data.success) {
+            displayResults(data.data, data.pagination);
+            updateTotalCount(data.pagination.total);
+        } else {
+            showError(data.error || 'An error occurred');
+        }
+    } catch (error) {
+        showError('Error connecting to server: ' + error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+function updateActiveFilters(keyword, type, sortBy) {
+    const filtersDiv = document.getElementById('activeFilters');
+    let html = '';
+    
+    if (keyword) {
+        html += `<span class="chip"><i class="fas fa-search"></i> "${keyword}"</span>`;
+    }
+    if (type) {
+        const icon = type === 'video' ? 'fa-video' : 'fa-file-alt';
+        html += `<span class="chip"><i class="fas ${icon}"></i> ${type}</span>`;
+    }
+    const sortIcon = sortBy === 'score' ? 'fa-star' : 'fa-calendar';
+    html += `<span class="chip"><i class="fas ${sortIcon}"></i> Sort by ${sortBy}</span>`;
+    
+    filtersDiv.innerHTML = html;
+    filtersDiv.style.display = html ? 'flex' : 'none';
+}
+
+function updateTotalCount(total) {
+    document.getElementById('totalCount').textContent = total;
+}
+
+function displayResults(contents, pagination) {
+    const resultsDiv = document.getElementById('results');
+    
+    if (contents.length === 0) {
+        resultsDiv.innerHTML = `
+            <div class="results-section">
+                <div class="empty-state">
+                    <i class="fas fa-search"></i>
+                    <h3>No results found</h3>
+                    <p>Try adjusting your search criteria</p>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    let html = `
+        <div class="results-section">
+            <div class="results-header">
+                <h3><i class="fas fa-list"></i> Search Results</h3>
+                <span class="results-count">${pagination.total} results found</span>
+            </div>
+    `;
+    
+    contents.forEach(content => {
+        const isVideo = content.type === 'video';
+        const badgeClass = isVideo ? 'badge-video' : 'badge-article';
+        const icon = isVideo ? 'fa-video' : 'fa-file-alt';
+        const typeText = isVideo ? 'Video' : 'Article';
+        
+        let metricsHtml = '';
+        if (isVideo) {
+            metricsHtml = `
+                <span class="meta-item">
+                    <i class="fas fa-eye"></i>
+                    ${content.metrics.views?.toLocaleString() || 0} views
+                </span>
+                <span class="meta-item">
+                    <i class="fas fa-thumbs-up"></i>
+                    ${content.metrics.likes?.toLocaleString() || 0} likes
+                </span>
+                <span class="meta-item">
+                    <i class="fas fa-clock"></i>
+                    ${content.metrics.duration || 'N/A'}
+                </span>
+            `;
+        } else {
+            metricsHtml = `
+                <span class="meta-item">
+                    <i class="fas fa-book-open"></i>
+                    ${content.metrics.reading_time || 0} min read
+                </span>
+                <span class="meta-item">
+                    <i class="fas fa-heart"></i>
+                    ${content.metrics.reactions || 0} reactions
+                </span>
+            `;
+        }
+
+        const tagsHtml = content.tags.map(tag => 
+            `<span class="tag"><i class="fas fa-tag"></i> ${tag}</span>`
+        ).join('');
+
+        const date = new Date(content.published_at);
+        const formattedDate = date.toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric' 
+        });
+
+        html += `
+            <div class="result-item">
+                <div class="result-header">
+                    <div>
+                        <div class="result-title">
+                            <i class="fas ${icon}"></i>
+                            ${content.title}
+                        </div>
+                        <div class="result-meta">
+                            <span class="badge ${badgeClass}">
+                                <i class="fas ${icon}"></i>
+                                ${typeText}
+                            </span>
+                            ${metricsHtml}
+                            <span class="meta-item">
+                                <i class="fas fa-calendar"></i>
+                                ${formattedDate}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="score-badge">
+                        <i class="fas fa-star"></i>
+                        ${content.score.toFixed(2)}
+                    </div>
+                </div>
+                ${tagsHtml ? `<div class="tags">${tagsHtml}</div>` : ''}
+            </div>
+        `;
+    });
+
+    // Pagination
+    html += `
+        <div class="pagination">
+            <button onclick="search(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>
+                <i class="fas fa-chevron-left"></i>
+                Previous
+            </button>
+            <span class="page-info">Page ${pagination.page} of ${pagination.total_pages}</span>
+            <button onclick="search(${currentPage + 1})" ${currentPage >= pagination.total_pages ? 'disabled' : ''}>
+                Next
+                <i class="fas fa-chevron-right"></i>
+            </button>
+        </div>
+    `;
+
+    html += '</div>';
+    resultsDiv.innerHTML = html;
+}
+
+async function syncData() {
+    if (!confirm('Data will be fetched from GitHub providers and synchronized. Do you want to continue?')) {
+        return;
+    }
+
+    showLoading();
+    hideError();
+    hideSuccess();
+
+    try {
+        const response = await fetch('/api/sync', { method: 'POST' });
+        const data = await response.json();
+
+        if (data.success) {
+            showSuccess(`Success! ${data.synced_count} contents synchronized from GitHub.`);
+            setTimeout(() => search(1), 1500);
+        } else {
+            showError(data.error || 'Synchronization error');
+        }
+    } catch (error) {
+        showError('Error during synchronization: ' + error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+function showLoading() {
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('results').style.display = 'none';
+}
+
+function hideLoading() {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('results').style.display = 'block';
+}
+
+function showError(message) {
+    const errorDiv = document.getElementById('error');
+    errorDiv.innerHTML = `<i class="fas fa-exclamation-circle"></i><span>${message}</span>`;
+    errorDiv.style.display = 'flex';
+    setTimeout(() => hideError(), 5000);
+}
+
+function hideError() {
+    document.getElementById('error').style.display = 'none';
+}
+
+function showSuccess(message) {
+    const successDiv = document.getElementById('success');
+    successDiv.innerHTML = `<i class="fas fa-check-circle"></i><span>${message}</span>`;
+    successDiv.style.display = 'flex';
+    setTimeout(() => hideSuccess(), 5000);
+}
+
+function hideSuccess() {
+    document.getElementById('success').style.display = 'none';
+}
+
+// Search with Enter key
+document.getElementById('keyword').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        search();
+    }
+});
+
+// Auto-search on type or sort change
+document.getElementById('type').addEventListener('change', function() {
+    search(1);
+});
+
+document.getElementById('sortBy').addEventListener('change', function() {
+    search(1);
+});
+
+// Show all contents on page load
+window.onload = () => search();
+</script>
+{% endblock %}

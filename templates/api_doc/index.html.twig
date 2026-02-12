@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Documentation - Search Engine</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #7f8c8d;
+            margin-bottom: 40px;
+        }
+        .endpoint {
+            margin-bottom: 40px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #3498db;
+        }
+        .method {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 12px;
+            margin-right: 10px;
+        }
+        .method.get {
+            background: #61affe;
+            color: white;
+        }
+        .path {
+            font-family: 'Courier New', monospace;
+            font-size: 18px;
+            color: #2c3e50;
+        }
+        .description {
+            margin: 15px 0;
+            color: #555;
+        }
+        .params {
+            margin-top: 15px;
+        }
+        .param {
+            padding: 10px;
+            background: white;
+            margin: 5px 0;
+            border-radius: 4px;
+        }
+        .param-name {
+            font-weight: bold;
+            color: #e74c3c;
+        }
+        .param-type {
+            color: #27ae60;
+            font-size: 12px;
+        }
+        .example {
+            margin-top: 15px;
+            padding: 15px;
+            background: #2c3e50;
+            color: #ecf0f1;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            overflow-x: auto;
+        }
+        .response {
+            margin-top: 15px;
+        }
+        .response-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        code {
+            background: #ecf0f1;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Search Engine API</h1>
+        <p class="subtitle">Content search and ranking service - v1.0.0</p>
+
+        <div class="endpoint">
+            <div>
+                <span class="method get">GET</span>
+                <span class="path">/api/search</span>
+            </div>
+            <p class="description">Searches contents and sorts them by score</p>
+            
+            <div class="params">
+                <h3>Query Parameters:</h3>
+                <div class="param">
+                    <span class="param-name">keyword</span>
+                    <span class="param-type">(string, optional)</span>
+                    <p>Search keyword</p>
+                </div>
+                <div class="param">
+                    <span class="param-name">type</span>
+                    <span class="param-type">(string, optional)</span>
+                    <p>Content type filter: <code>video</code> or <code>article</code></p>
+                </div>
+                <div class="param">
+                    <span class="param-name">sortBy</span>
+                    <span class="param-type">(string, optional)</span>
+                    <p>Sorting criteria: <code>score</code> (default) or <code>date</code></p>
+                </div>
+                <div class="param">
+                    <span class="param-name">page</span>
+                    <span class="param-type">(integer, optional)</span>
+                    <p>Page number (default: 1)</p>
+                </div>
+                <div class="param">
+                    <span class="param-name">perPage</span>
+                    <span class="param-type">(integer, optional)</span>
+                    <p>Results per page (default: 10)</p>
+                </div>
+            </div>
+
+            <div class="example">
+curl 'http://localhost:8080/api/search?keyword=programming&type=video&sortBy=score'
+            </div>
+
+            <div class="response">
+                <div class="response-title">Example Response:</div>
+                <div class="example">
+{
+  "success": true,
+  "data": [
+    {
+      "id": "v1",
+      "title": "Go Programming Tutorial",
+      "type": "video",
+      "metrics": {
+        "views": 15000,
+        "likes": 1200,
+        "duration": "15:30"
+      },
+      "published_at": "2024-03-15T10:00:00Z",
+      "tags": ["programming", "tutorial"],
+      "score": 45.5
+    }
+  ],
+  "pagination": {
+    "total": 1,
+    "page": 1,
+    "per_page": 10,
+    "total_pages": 1
+  }
+}
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <div>
+                <span class="method get">GET</span>
+                <span class="path">/</span>
+            </div>
+            <p class="description">Dashboard interface - Visually lists contents and allows you to search</p>
+        </div>
+
+        <h2 style="margin-top: 40px; margin-bottom: 20px;">Scoring Algorithm</h2>
+        <div class="endpoint">
+            <p><strong>Final Score = (Base Score × Content Type Coefficient) + Freshness Score + Engagement Score</strong></p>
+            
+            <h3 style="margin-top: 20px;">Base Score:</h3>
+            <ul style="margin-left: 20px; margin-top: 10px;">
+                <li><strong>Video:</strong> views / 1000 + (likes / 100)</li>
+                <li><strong>Article:</strong> reading_time + (reactions / 50)</li>
+            </ul>
+
+            <h3 style="margin-top: 20px;">Content Type Coefficient:</h3>
+            <ul style="margin-left: 20px; margin-top: 10px;">
+                <li><strong>Video:</strong> 1.5</li>
+                <li><strong>Article:</strong> 1.0</li>
+            </ul>
+
+            <h3 style="margin-top: 20px;">Freshness Score:</h3>
+            <ul style="margin-left: 20px; margin-top: 10px;">
+                <li>Within 1 week: +5</li>
+                <li>Within 1 month: +3</li>
+                <li>Within 3 months: +1</li>
+                <li>Older: +0</li>
+            </ul>
+
+            <h3 style="margin-top: 20px;">Engagement Score:</h3>
+            <ul style="margin-left: 20px; margin-top: 10px;">
+                <li><strong>Video:</strong> (likes / views) × 10</li>
+                <li><strong>Article:</strong> (reactions / reading_time) × 5</li>
+            </ul>
+        </div>
+
+        <h2 style="margin-top: 40px; margin-bottom: 20px;">Features</h2>
+        <div class="endpoint">
+            <ul style="margin-left: 20px;">
+                <li>✅ Multiple provider support (JSON and XML)</li>
+                <li>✅ Redis cache mechanism</li>
+                <li>✅ Advanced scoring algorithm</li>
+                <li>✅ Pagination support</li>
+                <li>✅ Content type filtering</li>
+                <li>✅ Flexible sorting options</li>
+                <li>✅ Dashboard interface</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,55 @@
+parameters:
+    provider.json.url: '%env(PROVIDER_JSON_URL)%'
+    provider.xml.url: '%env(PROVIDER_XML_URL)%'
+    cache.ttl: '%env(int:CACHE_TTL)%'
+
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+
+    App\:
+        resource: '../src/'
+        exclude:
+            - '../src/Kernel.php'
+            - '../src/Entity/'
+
+    # Provider'lar
+    App\Provider\JsonProvider:
+        arguments:
+            $apiUrl: '%provider.json.url%'
+        tags: ['app.provider']
+
+    App\Provider\XmlProvider:
+        arguments:
+            $apiUrl: '%provider.xml.url%'
+        tags: ['app.provider']
+
+    # Provider Manager
+    App\Service\ProviderManager:
+        arguments:
+            $providers: !tagged_iterator app.provider
+
+    # Cache Manager with TagAwareCacheInterface
+    App\Service\CacheManager:
+        arguments:
+            $cache: '@cache.search_results'
+            $cachePool: '@cache.search_results'
+            $ttl: '%cache.ttl%'
+
+    # Notification Channels
+    App\Service\Channel\EmailChannel:
+        arguments:
+            $fromEmail: '%env(MAIL_FROM)%'
+        tags: ['app.notification_channel']
+
+    App\Service\Channel\SmsChannel:
+        arguments:
+            $smsApiUrl: '%env(SMS_API_URL)%'
+            $smsApiKey: '%env(SMS_API_KEY)%'
+        tags: ['app.notification_channel']
+
+    # Notification Manager
+    App\Service\NotificationManager:
+        arguments:
+            $channels: !tagged_iterator app.notification_channel

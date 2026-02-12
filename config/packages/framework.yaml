@@ -1,0 +1,13 @@
+framework:
+    secret: '%env(APP_SECRET)%'
+    http_method_override: false
+    handle_all_throwables: true
+    php_errors:
+        log: true
+    test: true
+    cache:
+        default_redis_provider: '%env(REDIS_URL)%'
+        pools:
+            cache.search_results:
+                adapter: cache.adapter.redis
+                default_lifetime: 3600
