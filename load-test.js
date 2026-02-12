@@ -178,13 +178,25 @@ export function teardown(data) {
 
 // Handle summary
 export function handleSummary(data) {
+  // Check if metrics exist
+  if (!data.metrics || !data.metrics.cache_hits || !data.metrics.cache_misses) {
+    console.log('\n📊 Test Summary:');
+    console.log('================');
+    console.log(`Total Requests: ${data.metrics.http_reqs ? data.metrics.http_reqs.values.count : 0}`);
+    console.log(`Failed Requests: ${data.metrics.http_req_failed ? (data.metrics.http_req_failed.values.rate * 100).toFixed(2) : 0}%`);
+    
+    return {
+      'stdout': JSON.stringify(data, null, 2),
+    };
+  }
+
   const cacheHitRate = data.metrics.cache_hits.values.count / 
                        (data.metrics.cache_hits.values.count + data.metrics.cache_misses.values.count) * 100;
   
   console.log('\n📊 Test Summary:');
   console.log('================');
   console.log(`Total Requests: ${data.metrics.http_reqs.values.count}`);
-  console.log(`Failed Requests: ${data.metrics.http_req_failed.values.rate * 100}%`);
+  console.log(`Failed Requests: ${(data.metrics.http_req_failed.values.rate * 100).toFixed(2)}%`);
   console.log(`Avg Response Time: ${data.metrics.http_req_duration.values.avg.toFixed(2)}ms`);
   console.log(`95th Percentile: ${data.metrics.http_req_duration.values['p(95)'].toFixed(2)}ms`);
   console.log(`99th Percentile: ${data.metrics.http_req_duration.values['p(99)'].toFixed(2)}ms`);
