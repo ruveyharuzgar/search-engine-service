@@ -2,16 +2,22 @@
 
 namespace App\DTO;
 
+/**
+ * Immutable Data Transfer Object for Content
+ * 
+ * Uses PHP 8.1+ readonly properties to ensure immutability.
+ * No getters/setters needed - properties are public and readonly.
+ */
 class ContentDTO
 {
     public function __construct(
-        public string $id,
-        public string $title,
-        public string $type,
-        public array $metrics,
-        public \DateTime $publishedAt,
-        public array $tags,
-        public float $score = 0.0
+        public readonly string $id,
+        public readonly string $title,
+        public readonly string $type,
+        public readonly array $metrics,
+        public readonly \DateTime $publishedAt,
+        public readonly array $tags,
+        public float $score = 0.0  // Mutable - calculated after construction
     ) {}
 
     public function toArray(): array
